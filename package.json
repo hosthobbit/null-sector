@@ -1,0 +1,12 @@
+{
+  "name": "null-sector",
+  "version": "1.0.0",
+  "description": "NULL SECTOR: a fast, horror-tinged first-person shooter that runs in your browser (Three.js / WebGL).",
+  "scripts": {
+    "start": "node server.js 8420"
+  },
+  "keywords": ["fps", "game", "threejs", "webgl", "doom-like", "browser-game"],
+  "author": "Host Hobbit Ltd",
+  "license": "MIT",
+  "private": true
+}

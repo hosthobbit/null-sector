@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NULL SECTOR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;800;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --cy:#38f2ff; --mag:#ff2e88; --amb:#ffb347; --grn:#5dff8f; --bg:#05070c; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); overflow:hidden; font-family:'Rajdhani',system-ui,sans-serif; color:#dfe9ff; user-select:none; }
+  canvas { display:block; }
+  .hidden { display:none !important; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #crosshair { position:absolute; left:50%; top:50%; width:26px; height:26px; transform:translate(-50%,-50%); }
+  #crosshair i { position:absolute; background:var(--cy); box-shadow:0 0 6px var(--cy); transition:all .08s; }
+  #crosshair i:nth-child(1){ left:12px; top:0; width:2px; height:8px; }
+  #crosshair i:nth-child(2){ left:12px; bottom:0; width:2px; height:8px; }
+  #crosshair i:nth-child(3){ top:12px; left:0; width:8px; height:2px; }
+  #crosshair i:nth-child(4){ top:12px; right:0; width:8px; height:2px; }
+  #crosshair.hit i { background:#fff; box-shadow:0 0 10px #fff; }
+  #crosshair.spread i:nth-child(1){ top:-5px } #crosshair.spread i:nth-child(2){ bottom:-5px }
+  #crosshair.spread i:nth-child(3){ left:-5px } #crosshair.spread i:nth-child(4){ right:-5px }
+  #hitmark { position:absolute; left:50%; top:50%; width:34px; height:34px; transform:translate(-50%,-50%) rotate(45deg); opacity:0; transition:opacity .15s; }
+  #hitmark::before, #hitmark::after { content:''; position:absolute; background:#fff; }
+  #hitmark::before { left:16px; top:0; width:2px; height:34px; } #hitmark::after { top:16px; left:0; width:34px; height:2px; }
+  #hitmark.kill::before, #hitmark.kill::after { background:var(--mag); box-shadow:0 0 8px var(--mag); }
+
+  .panel { position:absolute; bottom:26px; padding:14px 20px; background:linear-gradient(135deg,rgba(8,14,28,.72),rgba(8,14,28,.35)); border:1px solid rgba(56,242,255,.28); clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px)); backdrop-filter:blur(3px); }
+  #vitals { left:26px; min-width:300px; }
+  #armory { right:26px; text-align:right; min-width:260px; }
+  .lbl { font:500 11px 'Orbitron'; letter-spacing:.24em; color:#7f95bd; }
+  .big { font:900 46px/1 'Orbitron'; letter-spacing:.02em; text-shadow:0 0 18px currentColor; }
+  .bar { height:7px; background:rgba(255,255,255,.08); margin:6px 0 10px; overflow:hidden; }
+  .bar b { display:block; height:100%; transition:width .2s; }
+  #hpbar b { background:linear-gradient(90deg,#ff3b5c,#ff9a5c); box-shadow:0 0 12px #ff3b5c; }
+  #arbar b { background:linear-gradient(90deg,#2b8bff,var(--cy)); box-shadow:0 0 12px var(--cy); }
+  #hpnum { color:#ff6b7f; } #arnum { color:var(--cy); font-size:30px; }
+  .row { display:flex; gap:22px; align-items:flex-end; }
+  #ammo { color:var(--amb); } #ammo small { font-size:22px; color:#9aa9c9; text-shadow:none; }
+  #wname { font:800 15px 'Orbitron'; letter-spacing:.18em; color:var(--cy); margin-top:6px; }
+  #slots { display:flex; gap:6px; justify-content:flex-end; margin-top:8px; }
+  #slots { flex-wrap:wrap; max-width:330px; margin-left:auto; }
+  #slots span { font:700 11px 'Orbitron'; padding:3px 7px; border:1px solid rgba(255,255,255,.18); color:#7f95bd; }
+  #slots span.on { border-color:var(--cy); color:var(--cy); box-shadow:0 0 8px rgba(56,242,255,.5) inset; }
+  #slots span.locked { opacity:.25; }
+
+  #topbar { position:absolute; top:22px; left:50%; transform:translateX(-50%); text-align:center; }
+  #sector { font:800 14px 'Orbitron'; letter-spacing:.3em; color:var(--cy); text-shadow:0 0 12px var(--cy); }
+  #objective { font:600 16px 'Rajdhani'; color:#b9c6e6; margin-top:4px; letter-spacing:.06em; }
+  #score { position:absolute; top:22px; right:30px; text-align:right; }
+  #score .big { font-size:30px; color:#fff; }
+  #combo { font:800 13px 'Orbitron'; color:var(--mag); letter-spacing:.2em; min-height:16px; text-shadow:0 0 10px var(--mag); }
+  #minimap { position:absolute; top:22px; left:26px; width:190px; height:190px; border:1px solid rgba(56,242,255,.3); background:rgba(4,8,16,.55); clip-path:polygon(0 0,100% 0,100% 100%,14px 100%,0 calc(100% - 14px)); }
+  #feed { position:absolute; top:230px; left:26px; font:700 14px 'Rajdhani'; letter-spacing:.05em; }
+  #feed div { color:#cfe; animation:fade 3.2s forwards; text-shadow:0 0 8px rgba(56,242,255,.6); }
+  @keyframes fade { 0%,70% { opacity:1 } 100% { opacity:0 } }
+  #banner { position:absolute; top:34%; left:0; right:0; text-align:center; opacity:0; transition:opacity .6s; }
+  #banner.show { opacity:1; }
+  #banner h2 { font:900 64px 'Orbitron'; margin:0; letter-spacing:.14em; color:#fff; text-shadow:0 0 30px var(--mag),0 0 60px var(--mag); }
+  #banner p { font:600 20px 'Rajdhani'; letter-spacing:.3em; color:var(--cy); margin:10px 0 0; }
+  #dmg { position:absolute; inset:0; background:radial-gradient(ellipse at center,transparent 45%,rgba(255,20,60,.55)); opacity:0; transition:opacity .25s; }
+  #pickupflash { position:absolute; inset:0; background:radial-gradient(ellipse at center,transparent 55%,rgba(56,242,255,.3)); opacity:0; transition:opacity .3s; }
+  #lowhp { position:absolute; inset:0; box-shadow:inset 0 0 160px rgba(255,0,40,.6); opacity:0; animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.35 } }
+  #fps { position:absolute; bottom:8px; left:50%; transform:translateX(-50%); font:700 11px 'Orbitron'; color:#7f95bd; letter-spacing:.2em; }
+  #reloadtip { position:absolute; top:58%; left:50%; transform:translateX(-50%); font:800 13px 'Orbitron'; letter-spacing:.25em; color:var(--amb); text-shadow:0 0 10px var(--amb); }
+
+  /* ---------- screens ---------- */
+  .screen { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; background:radial-gradient(ellipse at center,rgba(10,16,34,.55),rgba(2,3,8,.93)); z-index:10; }
+  .screen h1 { font:900 clamp(56px,10vw,120px)/0.9 'Orbitron'; margin:0; letter-spacing:.08em; color:#fff; text-shadow:0 0 24px var(--cy),0 0 70px rgba(56,242,255,.6),4px 0 0 rgba(255,46,136,.7),-4px 0 0 rgba(56,242,255,.7); animation:glitch 4s infinite; }
+  @keyframes glitch { 0%,92%,100% { transform:none } 93% { transform:translate(4px,-2px) skewX(8deg) } 95% { transform:translate(-5px,2px) } 97% { transform:translate(2px,0) skewX(-6deg) } }
+  .screen .tag { font:600 18px 'Rajdhani'; letter-spacing:.5em; color:var(--cy); margin:18px 0 38px; text-transform:uppercase; }
+  .btn { pointer-events:auto; font:800 16px 'Orbitron'; letter-spacing:.25em; padding:16px 44px; margin:7px; color:#05070c; background:var(--cy); border:0; cursor:pointer; clip-path:polygon(12px 0,100% 0,calc(100% - 12px) 100%,0 100%); box-shadow:0 0 30px rgba(56,242,255,.6); transition:transform .12s, background .12s; }
+  .btn:hover { transform:scale(1.05); background:#fff; }
+  .btn.ghost { background:transparent; color:var(--cy); box-shadow:inset 0 0 0 2px var(--cy); }
+  .brief { max-width:640px; text-align:center; font:500 17px/1.55 'Rajdhani'; color:#9fb0d6; margin-bottom:26px; }
+  .keys { display:grid; grid-template-columns:repeat(4,auto); gap:6px 26px; font:600 14px 'Rajdhani'; color:#8aa0c8; margin-top:26px; }
+  .keys b { font:700 12px 'Orbitron'; color:var(--cy); margin-right:8px; }
+  .settings { display:flex; gap:28px; margin:16px 0 4px; font:600 14px 'Rajdhani'; color:#9fb0d6; align-items:center; flex-wrap:wrap; justify-content:center; }
+  .settings input[type=range] { accent-color:var(--cy); width:130px; vertical-align:middle; pointer-events:auto; }
+  .settings select { background:#0b1224; color:var(--cy); border:1px solid rgba(56,242,255,.4); font:600 14px 'Rajdhani'; padding:4px 8px; pointer-events:auto; }
+  .setgrid { display:grid; grid-template-columns:260px 280px 60px; gap:16px 18px; align-items:center; font:600 17px 'Rajdhani'; color:#b9c6e6; letter-spacing:.05em; background:rgba(8,14,28,.6); border:1px solid rgba(56,242,255,.25); padding:26px 32px; }
+  .setgrid input[type=range] { accent-color:var(--cy); width:100%; pointer-events:auto; }
+  .setgrid input[type=checkbox] { accent-color:var(--cy); width:22px; height:22px; pointer-events:auto; }
+  .setgrid select { background:#0b1224; color:var(--cy); border:1px solid rgba(56,242,255,.4); font:600 16px 'Rajdhani'; padding:5px 10px; pointer-events:auto; }
+  .setgrid output { font:700 14px 'Orbitron'; color:var(--cy); }
+  #stats { font:600 20px/1.8 'Rajdhani'; color:#b9c6e6; text-align:center; margin:10px 0 24px; letter-spacing:.08em; }
+  #stats b { color:#fff; font-family:'Orbitron'; }
+  #loading { font:700 14px 'Orbitron'; letter-spacing:.3em; color:#7f95bd; margin-top:18px; }
+  #best { font:700 13px 'Orbitron'; letter-spacing:.25em; color:var(--amb); margin-top:14px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="hud" class="hidden">
+  <canvas id="minimap" width="380" height="380"></canvas>
+  <div id="feed"></div>
+  <div id="topbar"><div id="sector">SECTOR 01</div><div id="objective">Purge the Glitchborn</div></div>
+  <div id="score"><div class="lbl">SCORE</div><div class="big" id="scorenum">0</div><div id="combo"></div></div>
+  <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+  <div id="hitmark"></div>
+  <div id="reloadtip" class="hidden">RELOADING</div>
+  <div id="fps" class="hidden"></div>
+  <div id="banner"><h2 id="bannerh">SECTOR 01</h2><p id="bannerp">THE VAULT REMEMBERS</p></div>
+  <div class="panel" id="vitals">
+    <div class="row">
+      <div><div class="lbl">INTEGRITY</div><div class="big" id="hpnum">100</div></div>
+      <div><div class="lbl">SHIELD</div><div class="big" id="arnum">0</div></div>
+    </div>
+    <div class="bar" id="hpbar"><b style="width:100%"></b></div>
+    <div class="bar" id="arbar" style="margin-bottom:0"><b style="width:0"></b></div>
+  </div>
+  <div class="panel" id="armory">
+    <div class="lbl">AMMUNITION</div>
+    <div class="big" id="ammo">30<small> / 120</small></div>
+    <div id="wname">PULSE CARBINE</div>
+    <div id="slots"><span data-s="0">1 CARBINE</span><span data-s="1">2 SCATTER</span><span data-s="2">3 RIPPER</span><span data-s="3">4 ARC</span><span data-s="4">5 RAIL</span><span data-s="5">6 BFG</span></div>
+  </div>
+  <div id="lowhp"></div>
+  <div id="dmg"></div>
+  <div id="pickupflash"></div>
+</div>
+
+<div id="title" class="screen">
+  <h1>NULL SECTOR</h1>
+  <div class="tag">The vault remembers</div>
+  <p class="brief">Four hundred metres under Oxfordshire, the old data vault never shut down. Its machines kept learning in the dark, and they've learned to hate the light. You are the last warden. Descend, sector by sector, and purge the Glitchborn.</p>
+  <button class="btn" id="play">ENTER THE VAULT</button>
+  <button class="btn ghost" id="titlesettings">SETTINGS</button>
+  <div class="keys">
+    <span><b>WASD</b>Move</span><span><b>MOUSE</b>Aim / fire</span><span><b>SHIFT</b>Sprint</span><span><b>SPACE</b>Jump</span>
+    <span><b>Q</b>Phase dash</span><span><b>R</b>Reload</span><span><b>1 – 6</b>Weapons</span><span><b>ESC</b>Pause</span>
+  </div>
+  <div id="best"></div>
+  <div id="loading"></div>
+</div>
+
+<div id="pause" class="screen hidden">
+  <h1 style="font-size:72px">PAUSED</h1>
+  <div class="tag">Signal held</div>
+  <button class="btn" id="resume">RESUME</button>
+  <button class="btn ghost" id="pausesettings">SETTINGS</button>
+  <button class="btn ghost" id="quit">ABANDON RUN</button>
+</div>
+
+<div id="settingsmenu" class="screen hidden" style="z-index:20">
+  <h1 style="font-size:60px">SETTINGS</h1>
+  <div class="tag">Tune your uplink</div>
+  <div class="setgrid">
+    <label for="sens">Mouse sensitivity</label><input type="range" id="sens" min="0.05" max="2" step="0.05"><output id="sensv"></output>
+    <label for="invert">Invert mouse (up/down)</label><input type="checkbox" id="invert"><span></span>
+    <label for="fov">Field of view</label><input type="range" id="fov" min="60" max="110" step="1"><output id="fovv"></output>
+    <label for="vol">Master volume</label><input type="range" id="vol" min="0" max="1" step="0.05"><output id="volv"></output>
+    <label for="quality">Graphics quality</label><select id="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select><span></span>
+    <label for="showfps">Show FPS counter</label><input type="checkbox" id="showfps"><span></span>
+    <label for="gore">Blood &amp; gore</label><input type="checkbox" id="gore"><span></span>
+  </div>
+  <p class="brief" style="margin:18px 0 10px;font-size:15px">Settings are saved automatically. Tip: if aiming feels twitchy, try 0.3 to 0.6.</p>
+  <button class="btn" id="settingsback">BACK</button>
+  <button class="btn ghost" id="settingsreset">RESET TO DEFAULTS</button>
+</div>
+
+<div id="over" class="screen hidden">
+  <h1 id="overtitle" style="font-size:80px">SIGNAL LOST</h1>
+  <div class="tag" id="overtag">The vault keeps you</div>
+  <div id="stats"></div>
+  <button class="btn" id="again">DESCEND AGAIN</button>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
