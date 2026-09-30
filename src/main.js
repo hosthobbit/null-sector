@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { buildLevel, CELL, WALL_H } from './level.js';
+import { buildLevel, CELL, WALL_H, FINAL_DEPTH, dreadFor } from './level.js';
 import { Player } from './player.js';
 import { Viewmodel, WEAPONS } from './weapons.js';
 import { Enemy, rollEnemy } from './enemies.js';
@@ -23,17 +23,21 @@ function saveSettings(s) { try { localStorage.setItem('ns-settings', JSON.string
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 
 const FinalShader = {
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, damage: { value: 0 }, aberr: { value: 0.004 }, grain: { value: 0.016 }, heal: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, damage: { value: 0 }, aberr: { value: 0.004 }, grain: { value: 0.016 }, heal: { value: 0 }, dread: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float time, damage, aberr, grain, heal; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float time, damage, aberr, grain, heal, dread; varying vec2 vUv;
     float rnd(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
       vec2 uv = vUv; vec2 c = uv - 0.5; float d = length(c);
       float ab = aberr + damage * 0.02;
       vec3 col = vec3(texture2D(tDiffuse, uv + c*ab).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - c*ab).b);
       col += (rnd(uv*vec2(1920.0,1080.0) + fract(time)) - 0.5) * grain;
-      col *= 1.0 - smoothstep(0.42, 0.98, d) * 0.8;
+      // deeper sectors: drained, blood-tinted colour, heavier grain and a vignette that pulses like a heartbeat
+      col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))) * vec3(1.15, 0.78, 0.72), dread * 0.4);
+      col += (rnd(uv*vec2(1300.0,900.0) + fract(time*1.3)) - 0.5) * grain * dread * 1.5;
+      float beat = pow(max(0.0, sin(time * 5.2)), 12.0) * step(0.55, dread);
+      col *= 1.0 - smoothstep(0.42 - dread * 0.12 - beat * 0.05, 0.98, d) * (0.8 + dread * 0.15);
       col = mix(col, col * vec3(1.6, 0.35, 0.4), damage * smoothstep(0.15, 0.85, d));
       col = mix(col, col * vec3(0.6, 1.4, 1.5), heal * smoothstep(0.3, 0.9, d));
       col *= 0.985 + 0.015 * sin(uv.y * 1100.0 + time * 8.0);
@@ -197,6 +201,7 @@ class Game {
   startRun() {
     audio.initAudio(this.settings.vol); audio.resume();
     this.applySettings();
+    this.won = false;
     this.depth = 1; this.score = 0; this.kills = 0; this.shots = 0; this.hits = 0; this.runStart = performance.now();
     this.combo = 1; this.comboT = 0;
     this.unlocked = [true, false, false, false, false, false];
@@ -223,11 +228,12 @@ class Game {
     const s = L.centreOf(L.start.cx, L.start.cy);
     this.player.reset(s, Math.atan2(-(L.exitRoom.cx - L.start.cx), -(L.exitRoom.cy - L.start.cy)));
     this.boss = null;
-    const isBoss = depth % 3 === 0;
+    const isFinal = depth === FINAL_DEPTH, isBoss = depth % 3 === 0 || isFinal;
+    this.final.uniforms.dread.value = dreadFor(depth);
     const avoid = [s];
     for (const r of L.rooms.slice(1)) {
       if (isBoss && r === L.exitRoom) continue;
-      const cap = 14 + depth * 2;
+      const cap = isFinal ? 18 : 14 + depth * 2; // the last sector is about the Warden
       const n = Math.min(1 + Math.floor(rand() * 2) + Math.floor(depth / 3) + (L.distFromStart(r) > 18 ? 1 : 0), Math.max(0, cap - this.enemies.length));
       for (let i = 0; i < n; i++) {
         const p = L.randomFloorInRoom(r, avoid); avoid.push(p);
@@ -239,8 +245,14 @@ class Game {
       if (rand() < 0.45) this.pickups.add('ammo', L.randomFloorInRoom(r, avoid));
     }
     if (isBoss) {
-      this.boss = new Enemy(L.theme === 'undercroft' ? 'hollowking' : 'archivist', L.centreOf(L.exitRoom.cx, L.exitRoom.cy), this.scene, depth);
+      this.boss = new Enemy(isFinal ? 'warden' : L.theme === 'vault' ? 'archivist' : 'hollowking', L.centreOf(L.exitRoom.cx, L.exitRoom.cy), this.scene, depth);
       this.enemies.push(this.boss);
+    }
+    if (isFinal) { // supplies around the edge of the arena
+      const A = L.exitRoom;
+      for (const k of ['ammo', 'ammo', 'ammo', 'ammo', 'health', 'health', 'shield', 'shield']) this.pickups.add(k, L.randomFloorInRoom(A, avoid));
+      if (this.unlocked[5]) this.pickups.add('cell', L.randomFloorInRoom(L.rooms[Math.floor(L.rooms.length / 2)], avoid));
+      this.arenaSupplyT = 20;
     }
     // weapon unlocks placed on the way
     const mid = L.rooms[Math.min(2, L.rooms.length - 1)];
@@ -258,10 +270,12 @@ class Game {
     this.portalOpen = false;
     this.buildMapBase();
     audio.startMusic(depth);
-    const horror = L.theme === 'undercroft';
-    this.banner(horror ? `UNDERCROFT ${String(depth).padStart(2, '0')}` : `SECTOR ${String(depth).padStart(2, '0')}`,
-      isBoss ? (horror ? 'THE HOLLOW KING HUNGERS' : 'THE ARCHIVIST AWAITS') : horror ? ['THE DEAD DO NOT REST', 'SOMETHING IS FEEDING', 'FOLLOW THE BLOOD', 'THEY WERE WORKERS ONCE'][(depth >> 1) % 4] : ['THE VAULT REMEMBERS', 'SIGNAL DEGRADING', 'DEEPER STILL', 'THEY ARE LEARNING', 'NO CARRIER'][(depth - 1) % 5]);
-    $('sector').textContent = `${horror ? 'UNDERCROFT' : 'SECTOR'} ${String(depth).padStart(2, '0')}`;
+    const name = isFinal ? "THE WARDEN'S HALL" : `${{ vault: 'SECTOR', undercroft: 'UNDERCROFT', pit: 'THE PIT' }[L.theme]} ${String(depth).padStart(2, '0')}`;
+    const lines = ['', 'THE VAULT REMEMBERS', 'THE DEAD DO NOT REST', 'THE ARCHIVIST AWAITS', 'SOMETHING IS FEEDING', 'THE ROT HAS REACHED THE VAULT',
+      'THE HOLLOW KING HUNGERS', 'LISTEN TO THEM SCREAM', 'NO ONE IS FORGIVEN HERE', 'HE CAME BACK WRONG', 'THE WARDEN WAKES'];
+    this.banner(name, lines[depth] || 'DEEPER STILL');
+    $('sector').textContent = `${name}  ·  ${depth}/${FINAL_DEPTH}`;
+    if (isFinal) setTimeout(() => this.state === 'playing' && this.audio.roar(1.3), 1800);
     this.level.updateFlow(this.player.pos.x, this.player.pos.z);
   }
 
@@ -375,7 +389,8 @@ class Game {
       const seen = e.pos.distanceTo(this.player.pos) < 60 && this.level.los(this.player.pos.x, this.player.pos.z, e.pos.x, e.pos.z);
       if (!near && !seen) continue;
       this.fx.tracer(near ? pos : this.player.eye.clone().setY(this.player.eye.y - 0.3), e.centre, 0x5dff5d, 0.08, 0.5);
-      e.damage(999999, this, e.centre.sub(pos).setY(0).normalize(), { gib: true });
+      // the Warden is the one thing the BFG can't erase outright: each blast tears off a third of it
+      e.damage(e.t.final ? Math.ceil(e.maxHp * 0.34) : 999999, this, e.centre.sub(pos).setY(0).normalize(), { gib: true });
       this.fx.burst(e.centre, 0x5dff5d, 25, 7, 0.35);
       n++;
     }
@@ -433,7 +448,7 @@ class Game {
   // ---------------------------------------------------------------- damage / events
   hurtPlayer(dmg, from, knock = 3) {
     const P = this.player;
-    if (this.state !== 'playing' || P.invuln > 0) return;
+    if (this.state !== 'playing' || P.invuln > 0 || this.won) return;
     dmg = Math.round(dmg * (1 + (this.depth - 1) * 0.05));
     const absorbed = Math.min(P.shield, Math.round(dmg * 0.7));
     P.shield -= absorbed; P.hp -= dmg - absorbed;
@@ -442,7 +457,7 @@ class Game {
     if (from) P.knock.add(new THREE.Vector3(P.pos.x - from.x, 0, P.pos.z - from.z).normalize().multiplyScalar(knock));
     this.audio.hurt();
     this.combo = 1;
-    if (P.hp <= 0) { P.hp = 0; this.gameOver(false); }
+    if (P.hp <= 0) { P.hp = 0; if (!this.won) this.gameOver(false); }
   }
 
   onEnemyKilled(e) {
@@ -455,6 +470,7 @@ class Game {
     this.audio.kill();
     if (!e.organic) { this.fx.burst(e.centre, e.t.eye, e.type === 'archivist' ? 160 : 45, e.type === 'archivist' ? 16 : 9, e.type === 'archivist' ? 0.6 : 0.3); this.fx.light(e.centre, e.t.eye, e.type === 'archivist' ? 300 : 60, 0.35, 10); }
     if (e.type === 'archivist') { this.fx.explosion(e.centre, 0xff2e88, 9); this.shake(1.5); this.banner('ARCHIVIST DESTROYED', 'THE VAULT FORGETS'); this.score += 5000 * this.depth; }
+    if (e.type === 'warden') { this.wardenDown(e); return; }
     if (e.type === 'hollowking') { this.fx.gibBurst(e.centre, 30, 9); this.fx.bloodSpray(e.centre, new THREE.Vector3(0, 1, 0), 80, 9); this.shake(1.5); this.banner('THE HOLLOW KING FALLS', 'THE DEAD GO QUIET'); this.score += 5000 * this.depth; }
     const r = Math.random();
     if (!e.minion || r < 0.2) {
@@ -462,6 +478,37 @@ class Game {
       else if (r < 0.3) this.pickups.add('health', e.pos);
       else if (r < 0.38) this.pickups.add('shield', e.pos);
     }
+  }
+
+  onBossPhase(e, ph) {
+    this.shake(1.2); this.audio.roar(1.2);
+    this.banner(ph === 2 ? 'THE WARDEN BLEEDS' : 'THE WARDEN IS ENRAGED', ph === 2 ? 'THE DAMNED ANSWER HIS CALL' : 'IT WILL NOT LET YOU LEAVE');
+  }
+
+  /** The final kill: the Warden comes apart, everything else in the sector drops dead, and the run is won. */
+  wardenDown(e) {
+    this.won = true; this.score += 25000 + 5000 * this.depth;
+    this.fx.gibBurst(e.centre, 40, 11); this.fx.bloodSpray(e.centre, new THREE.Vector3(0, 1, 0), 120, 12);
+    this.fx.explosion(e.centre, 0xff3010, 12); this.fx.light(e.centre, 0xff3010, 800, 1.5, 40);
+    this.shake(1.6); this.audio.roar(1.6);
+    this.banner('THE WARDEN IS DEAD', 'THE SCREAMING STOPS');
+    for (const o of this.enemies) if (!o.dead && o !== e) o.damage(999999, this, null, { gib: true });
+    setTimeout(() => this.victory(), 4200);
+  }
+
+  victory() {
+    if (this.state === 'over') return;
+    this.state = 'over'; this.mouseDown = false;
+    document.exitPointerLock?.();
+    audio.stopMusic();
+    const secs = Math.round((performance.now() - this.runStart) / 1000);
+    const acc = this.shots ? Math.round(this.hits / this.shots * 100) : 0;
+    const best = Math.max(this.score, Number(store.get('ns-best') || 0));
+    store.set('ns-best', best);
+    $('overtitle').textContent = 'YOU ESCAPED';
+    $('overtag').textContent = 'The Warden is dead. The damned are finally quiet.';
+    $('stats').innerHTML = `SCORE <b>${this.score.toLocaleString()}</b><br>ALL ${FINAL_DEPTH} SECTORS CLEARED &nbsp; · &nbsp; KILLS <b>${this.kills}</b><br>ACCURACY <b>${acc}%</b> &nbsp; · &nbsp; TIME <b>${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</b><br>BEST <b>${best.toLocaleString()}</b>`;
+    $('pause').classList.add('hidden'); $('hud').classList.add('hidden'); $('over').classList.remove('hidden');
   }
 
   spawnMinions(pos, n, type = 'skitter') {
@@ -583,17 +630,22 @@ class Game {
     this.projectiles.update(dt, this);
     this.pickups.update(dt, this);
     this.comboT -= dt; if (this.comboT <= 0) this.combo = 1;
+    audio.ambience(dt, this.depth);
+    if (this.depth === FINAL_DEPTH && !this.won) { // keep the arena stocked while the Warden lives
+      this.arenaSupplyT -= dt;
+      if (this.arenaSupplyT <= 0) { this.arenaSupplyT = 20; if (this.pickups.list.filter(p => p.kind === 'ammo').length < 3) this.pickups.add(Math.random() < 0.7 ? 'ammo' : 'health', L.randomFloorInRoom(L.exitRoom)); }
+    }
 
     // sector objective
     const alive = this.enemies.filter(e => !e.dead).length;
-    if (!this.portalOpen && alive === 0) {
+    if (!this.portalOpen && alive === 0 && this.depth !== FINAL_DEPTH) {
       this.portalOpen = true; L.exit.setActive(true); this.audio.portal();
       this.banner('SECTOR PURGED', 'EXIT PORTAL ONLINE');
       const secs = (performance.now() - this.sectorStart) / 1000;
       const bonus = 1000 * this.depth + Math.max(0, Math.round((240 - secs) * 10));
       this.score += bonus; this.feed(`SECTOR BONUS +${bonus}`, '#5dff8f');
     }
-    $('objective').textContent = this.boss && !this.boss.dead ? `Destroy ${this.boss.type === 'hollowking' ? 'THE HOLLOW KING' : 'THE ARCHIVIST'}  ·  ${Math.max(0, Math.ceil(this.boss.hp / this.boss.maxHp * 100))}%` : this.portalOpen ? 'Reach the exit portal' : `Purge the Glitchborn  ·  ${alive} remain`;
+    $('objective').textContent = this.won ? 'The Warden is dead' : this.boss && !this.boss.dead ? `Destroy ${{ hollowking: 'THE HOLLOW KING', archivist: 'THE ARCHIVIST', warden: 'THE WARDEN' }[this.boss.type]}  ·  ${Math.max(0, Math.ceil(this.boss.hp / this.boss.maxHp * 100))}%` : this.portalOpen ? 'Reach the exit portal' : `Purge the Glitchborn  ·  ${alive} remain`;
     if (this.portalOpen) {
       const ex = L.exit.group.position;
       if (Math.hypot(P.pos.x - ex.x, P.pos.z - ex.z) < 1.9) {
@@ -665,11 +717,17 @@ requestAnimationFrame(() => {
       const want = q.get('shot'), L = g.level;
       const e = g.enemies.find(x => x.type === want) || g.enemies.find(x => x.organic) || g.enemies[0];
       let spot = null;
-      for (const d of [5, 6, 4, 7, 3]) for (const [dx, dz] of [[d, 0], [-d, 0], [0, d], [0, -d]]) { const x = e.pos.x + dx, z = e.pos.z + dz; if (!spot && !L.isSolid(x, z) && L.los(x, z, e.pos.x, e.pos.z)) spot = [x, z]; }
+      const k = Math.max(1, e.t.radius * 1.6);
+      for (const d of [5, 6, 4, 7, 3].map(v => Math.round(v * k))) for (const [dx, dz] of [[d, 0], [-d, 0], [0, d], [0, -d]]) { const x = e.pos.x + dx, z = e.pos.z + dz; if (!spot && !L.isSolid(x, z) && L.los(x, z, e.pos.x, e.pos.z)) spot = [x, z]; }
       if (spot) g.player.pos.set(spot[0], 0, spot[1]);
       const c = e.centre, eye = g.player.eye;
       g.player.yaw = Math.atan2(-(c.x - eye.x), -(c.z - eye.z)); g.player.pitch = Math.atan2(c.y - eye.y, Math.hypot(c.x - eye.x, c.z - eye.z)) - 0.05;
       e.state = 'chase';
+      if (q.has('prop')) { // look at a piece of set dressing instead (e.g. prop=writhe for a shackled prisoner)
+        let found = null; L.group.traverse(o => { if (!found && o.userData[q.get('prop')]) found = o; });
+        if (found) { const p = found.getWorldPosition(new THREE.Vector3()), f = new THREE.Vector3(0, 0, 1).applyQuaternion(found.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize();
+          g.player.pos.set(p.x + f.x * 3.2, 0, p.z + f.z * 3.2); g.player.yaw = Math.atan2(f.x, f.z); g.player.pitch = 0.05; g.enemies.forEach(x => { x.state = 'idle'; }); }
+      }
       window.__autotest = { type: e.type, theme: L.theme, enemies: g.enemies.map(x => x.type).join(',') };
       console.log('AUTOTEST ' + JSON.stringify(window.__autotest));
       if (q.has('kill')) setTimeout(() => {
@@ -677,7 +735,12 @@ requestAnimationFrame(() => {
         sync(); g.fireCd = 0; g.reloading = 0; g.mouseDown = true; g.tryFire();
         for (let i = 0; i < 180; i++) { g.update(1 / 60); g.fx.update(1 / 60); sync(); if (i === 90) g.mouseDown = false; }
       }, 1500);
-      if (q.has('report')) setTimeout(() => console.log('REPORT ' + JSON.stringify({ kills: g.kills, alive: g.enemies.filter(x => !x.dead).length, total: g.totalEnemies, corpses: g.corpses.length, gibs: g.fx.gibs.length, decals: g.fx.decals.length, ammo: g.ammo[g.weapon], score: g.score })), Number(q.get('report')) || 7000);
+      if (q.has('win')) setTimeout(() => { // wear the boss down through every phase, simulating in between, then check the ending
+        const log = [];
+        for (let k = 0; k < 4; k++) { if (g.boss.dead) break; g.boss.damage(Math.ceil(g.boss.maxHp * 0.3), g, null); for (let i = 0; i < 240; i++) g.update(1 / 60); log.push(`phase ${g.boss.phase} hp ${Math.max(0, g.boss.hp)} enemies ${g.enemies.filter(x => !x.dead).length} shots ${g.projectiles.list.length}`); }
+        setTimeout(() => console.log('WIN ' + JSON.stringify({ log, won: g.won, state: g.state, title: $('overtitle').textContent, score: g.score })), 4600);
+      }, 1500);
+      if (q.has('report')) setTimeout(() => console.log('REPORT ' + JSON.stringify({ kills: g.kills, alive: g.enemies.filter(x => !x.dead).length, total: g.totalEnemies, corpses: g.corpses.length, boss: g.boss ? Math.round(g.boss.hp / g.boss.maxHp * 100) + '%' : null, gibs: g.fx.gibs.length, decals: g.fx.decals.length, ammo: g.ammo[g.weapon], score: g.score })), Number(q.get('report')) || 7000);
     } catch (err) { console.error('AUTOTEST FAILED ' + err.stack); }
   }
 });

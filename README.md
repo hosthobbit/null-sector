@@ -2,7 +2,7 @@
 
 **A fast, horror-tinged first-person shooter that runs in your web browser.**
 
-400 metres under Oxfordshire sits an abandoned data vault. Something woke up in it. Fight down through procedurally generated sectors: cold machine halls overrun by the Glitchborn, and beneath them the **Undercroft**, stone catacombs full of the dead and the things that eat them.
+400 metres under Oxfordshire sits an abandoned data vault. Something woke up in it. Fight down through **10 procedurally generated sectors**: cold machine halls overrun by the Glitchborn, the **Undercroft**'s stone catacombs full of the dead and the things that eat them, and at the bottom **the Pit**, where the damned are still being punished. Waiting in the last hall is **THE WARDEN**.
 
 No installs, no downloads and no game engine. Everything is built in JavaScript with Three.js (WebGL): the textures, sounds and levels are all generated in code while the game runs.
 
@@ -11,6 +11,7 @@ No installs, no downloads and no game engine. Everything is built in JavaScript 
 | | |
 |---|---|
 | ![The OBLIVION BFG](docs/bfg.jpg) | ![The Archivist boss](docs/vault.jpg) |
+| ![The Pit: a prisoner shackled to the wall](docs/pit.jpg) | ![The final boss, THE WARDEN](docs/warden.jpg) |
 
 ---
 
@@ -140,15 +141,27 @@ You can also upload the whole folder to any web host, or turn on **GitHub Pages*
 
 ## How to play
 
-- **Goal:** each sector is sealed. **Kill every enemy** to open the **exit portal**, then walk into it to descend.
-- **Sectors are generated fresh every run**, and every one is bigger and nastier than the last.
-- **Two worlds alternate as you go down:**
-  - **The Vault** (sector 1, then odd sectors): steel halls, hazard stripes, server racks and the machine Glitchborn.
-  - **The Undercroft** (sector 2, then even sectors): stone catacombs lit by torches and chandeliers, with corpses, hanging bodies, cages, skull piles, candles and blood-scrawled walls, plus the flesh monsters.
-- **Bosses:** every 3rd sector is guarded by a boss (**THE ARCHIVIST** in the Vault, **THE HOLLOW KING** in the Undercroft).
+- **Goal:** get through all **10 sectors** and kill **THE WARDEN** at the bottom. Each sector is sealed: **kill every enemy** to open the **exit portal**, then walk into it to descend.
+- **Sectors are generated fresh every run**, and every one is darker, bloodier and nastier than the last.
+
+| Sector | Where | What's waiting |
+|---|---|---|
+| 1 | The Vault | Steel halls and server racks, the machine Glitchborn |
+| 2 | The Undercroft | Stone catacombs: corpses, hanging bodies, cages, skulls, candles, blood on the walls |
+| 3 | The Vault | Boss: **THE ARCHIVIST** |
+| 4 | The Undercroft | Deeper, darker, more of the dead |
+| 5 | The Vault | The rot has reached the vault: bodies strung up among the servers |
+| 6 | The Undercroft | Boss: **THE HOLLOW KING** |
+| 7 – 8 | **The Pit** | Hellish red caverns, embers, braziers. People shackled to the walls, still struggling. Bodies on stakes, caged gibbets, everything that crawled up from below. |
+| 9 | The Pit | Boss: **THE HOLLOW KING** returns |
+| 10 | **The Warden's Hall** | The final boss: **THE WARDEN** |
+
+- **It gets scarier as you go down:** thicker, redder fog; lights that stutter and die; more bodies, blood and writing on the walls; a colour grade that drains and reddens the picture, and in the last sectors a vignette that pulses like a heartbeat.
+- **Listen:** the dark is full of distant sounds that get closer and more frequent as you descend: moans, chains, iron doors, screams, howling, sobbing, whips and the cries that follow them, and down in the Pit, whispers right by your ear. (All synthesised live; no audio files.)
 - **Pickups** are glowing, spinning crystals: **red** for health (+25), **cyan** for shield (+35), **orange** for ammo. Weapon pickups announce themselves when you grab them. Green **OBLIVION cells** (BFG ammo) are rare.
 - **Score:** chain kills within 3 seconds to build a **combo multiplier up to x6**. Getting hit resets it. Clearing a sector quickly earns a time bonus. Your **best score is saved** in your browser.
 - **Death:** when your Integrity hits 0 the run ends. Start again and the sectors are all new.
+- **Victory:** kill the Warden and you've escaped. Your final score, time and accuracy are shown, and your best score is saved.
 
 The **minimap** (top left) shows the layout around you (you're the white arrow), enemies and pickups.
 
@@ -214,7 +227,7 @@ Each new weapon appears as a glowing pickup somewhere in the sector where it unl
 | **Colossus** | Big and slow, soaks up damage and hits very hard. |
 | **THE ARCHIVIST** (boss) | Fires volleys of bolts and summons Skitters. |
 
-### Monsters (the Undercroft)
+### Monsters (the Undercroft and the Pit)
 | Enemy | Behaviour |
 |---|---|
 | **Ghoul** | Sprints at you and lunges. Usually in packs. |
@@ -222,6 +235,17 @@ Each new weapon appears as a glowing pickup somewhere in the sector where it unl
 | **Butcher** | Horned brute. Charges and slams. Sidestep the charge. |
 | **Wraith** | Floats above the ground and lobs arcing acid. |
 | **THE HOLLOW KING** (boss) | Towering, and keeps raising Ghouls. Kill the adds or save the BFG for him. |
+
+### The final boss
+**THE WARDEN** is a flayed giant jailer with an iron-spiked crown, four arms, a hooked flail and a burning heart in an open ribcage. He drags his chained prisoners behind him. He fights in three phases:
+
+| Phase | Health | What he does |
+|---|---|---|
+| 1 | 100–66% | Stalks you, slams the ground up close, and hurls fans of hellfire |
+| 2 | 66–33% | Adds **rings of fire rolling along the floor** (jump over them) and summons Ghouls and Wraiths |
+| 3 | under 33% | **Enraged:** faster, charges at you, bigger volleys, summons Butchers |
+
+The BFG can't erase him in one shot: each blast takes a third of his health. The arena is stocked with ammo, health and shield, and ammo keeps appearing while he's alive.
 
 Monsters bleed, leave corpses where they fall, and burst into gibs from explosions and big hits.
 
@@ -234,6 +258,7 @@ Monsters bleed, leave corpses where they fall, and burst into gibs from explosio
 - **Use the Arc Launcher and Scatter on packs of Ghouls and Skitters.**
 - **Don't get hit** if you're chasing a high score: the x6 combo is worth more than anything else.
 - **Save the BFG.** Charge it before you round the corner into the boss room.
+- **Against the Warden:** keep your distance from the slam, jump the fire rings, clear the summoned monsters before they surround you, and bring BFG cells: three blasts will finish him.
 
 ---
 

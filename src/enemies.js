@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { moveCircle } from './physics.js';
 import { skinTextures } from './textures.js';
+import { buildBody } from './horror.js';
 
 const TYPES = {
   skitter:  { hp: 45,   speed: 7.2, radius: 0.55, height: 0.7, dmg: 11, reach: 1.5, score: 100, eye: 0xff2e88, body: 0x2a2f38 },
@@ -14,6 +15,8 @@ const TYPES = {
   butcher:  { hp: 420,  speed: 3.0, radius: 1.0,  height: 1.4, dmg: 34, reach: 2.8, score: 450, eye: 0xff4020, organic: true, skin: [175, 120, 105] },
   wraith:   { hp: 85,   speed: 3.4, radius: 0.6,  height: 1.9, dmg: 15, reach: 24,  score: 170, eye: 0x9dff4a, organic: true, skin: [120, 125, 118] },
   hollowking:{ hp: 2800, speed: 2.6, radius: 1.9, height: 2.6, dmg: 40, reach: 4.2, score: 3500, eye: 0xff2010, organic: true, skin: [160, 110, 100], boss: true },
+  // --- the final boss, sector 10 ---
+  warden:   { hp: 5200, speed: 2.5, radius: 2.1, height: 2.5, dmg: 38, reach: 5.2, score: 25000, eye: 0xff3a10, organic: true, skin: [120, 72, 64], boss: true, final: true },
 };
 
 const SKIN = {};
@@ -199,8 +202,81 @@ function buildWraith(t) {
   } };
 }
 
+/** THE WARDEN: a flayed giant jailer. Spiked iron crown, four arms, an open ribcage with a burning heart,
+ *  a hook-bladed flail, and prisoners chained to its body that it drags wherever it goes. */
+function buildWarden(t) {
+  const g = new THREE.Group(), skin = skinMat(t), eye = glow(t.eye, 3), heartMat = glow(0xff3010, 1.6);
+  const bone = new THREE.MeshStandardMaterial({ color: 0x9a8e76, roughness: 0.75 }), iron = new THREE.MeshStandardMaterial({ color: 0x2c2826, metalness: 0.9, roughness: 0.45 });
+  const flesh = new THREE.MeshStandardMaterial({ color: 0x5a0e0a, roughness: 0.3 }), robe = new THREE.MeshStandardMaterial({ color: 0x120c0a, roughness: 1, side: THREE.DoubleSide });
+  const hips = new THREE.Group(); hips.position.y = 1.9; g.add(hips);
+  // tattered skirt of hide
+  const skirtGeo = new THREE.CylinderGeometry(0.7, 1.25, 1.7, 20, 4, true), sp = skirtGeo.attributes.position;
+  for (let i = 0; i < sp.count; i++) if (sp.getY(i) < -0.4) sp.setY(i, sp.getY(i) - Math.abs(Math.sin(i * 3.7)) * 0.5);
+  skirtGeo.computeVertexNormals();
+  const skirt = new THREE.Mesh(skirtGeo, robe); skirt.position.y = -0.55; hips.add(skirt);
+  const spine = new THREE.Group(); spine.position.y = 0.2; spine.rotation.x = -0.25; hips.add(spine);
+  // open ribcage with the heart inside
+  const back = new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 0.9, 6, 14), skin); back.position.set(0, 0.95, 0.28); back.scale.set(1.3, 1, 0.6); spine.add(back);
+  for (let i = 0; i < 7; i++) { const rib = new THREE.Mesh(new THREE.TorusGeometry(0.72 - Math.abs(i - 3) * 0.05, 0.05, 6, 20, Math.PI * 1.1), bone); rib.position.set(0, 0.5 + i * 0.17, 0); rib.rotation.set(Math.PI / 2, 0, Math.PI * 0.95); rib.scale.set(1.25, 1, 1); spine.add(rib); }
+  const heart = new THREE.Mesh(new THREE.SphereGeometry(0.3, 18, 14), heartMat); heart.position.set(0, 1.05, -0.05); spine.add(heart);
+  for (let i = 0; i < 5; i++) { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.8, 6), flesh); v.position.set(Math.sin(i * 1.3) * 0.25, 1.1 + Math.cos(i) * 0.2, 0.1); v.rotation.set(i, i * 2, i * 0.7); spine.add(v); }
+  const light = new THREE.PointLight(0xff3010, 5, 8, 2); light.position.set(0, 1.05, -1.2); spine.add(light);
+  // shoulders + head
+  const yoke = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.4, 0.8), skin); yoke.position.set(0, 1.85, 0.1); spine.add(yoke);
+  const neck = new THREE.Group(); neck.position.set(0, 2.1, -0.1); spine.add(neck);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 14), bone); skull.scale.set(0.85, 1.1, 1.05); skull.position.set(0, 0.3, -0.1); neck.add(skull);
+  const jaw = new THREE.Group(); jaw.position.set(0, 0.08, -0.15); neck.add(jaw);
+  const jawBone = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.4), bone); jawBone.position.set(0, -0.05, -0.12); jaw.add(jawBone);
+  for (let i = 0; i < 8; i++) { const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 5), bone); tooth.position.set(-0.16 + i * 0.045, 0.04, -0.3); jaw.add(tooth); }
+  const maw = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), glow(0xff2008, 1.2)); maw.position.set(0, 0.12, -0.3); maw.scale.set(1, 0.5, 0.4); neck.add(maw);
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), eye); e.position.set(s * 0.13, 0.36, -0.42); neck.add(e); }
+  for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2, sp2 = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.55 + (i % 2) * 0.25, 6), iron); sp2.position.set(Math.cos(a) * 0.3, 0.72, Math.sin(a) * 0.3 - 0.1); sp2.rotation.set(Math.sin(a) * 0.4, 0, -Math.cos(a) * 0.4); neck.add(sp2); }
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.05, 6, 20), iron); band.position.set(0, 0.55, -0.1); band.rotation.x = Math.PI / 2; neck.add(band);
+  // arms: two huge (one with a flail), two thin grasping ones from the ribs
+  const arms = [];
+  for (const s of [-1, 1]) {
+    const sh = limb(spine, s * 1.3, 1.85, 0, 0.26, 1.0, skin); sh.rotation.z = s * 0.25;
+    const el = limb(sh, 0, -1.25, 0, 0.22, 1.0, skin);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), skin); hand.position.y = -1.3; el.add(hand);
+    claws(hand, -0.1, bone); hand.scale.setScalar(2.2);
+    arms.push([sh, el]);
+    if (s === 1) { // hooked flail
+      const ch = new THREE.Group(); ch.position.y = -1.5; el.add(ch);
+      for (let k = 0; k < 10; k++) { const l = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.025, 5, 10), iron); l.position.y = -k * 0.15; l.rotation.set(Math.PI / 2, k % 2 ? Math.PI / 2 : 0, 0); ch.add(l); }
+      const hook = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.07, 6, 16, Math.PI * 1.3), iron); hook.position.y = -1.9; ch.add(hook);
+      const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), iron); ball.position.y = -1.6; ch.add(ball);
+      for (let k = 0; k < 6; k++) { const sp3 = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.3, 5), iron); const d = new THREE.Vector3().randomDirection(); sp3.position.copy(d.clone().multiplyScalar(0.3)).add(ball.position); sp3.lookAt(sp3.position.clone().add(d)); sp3.rotateX(Math.PI / 2); ch.add(sp3); }
+      arms.flail = ch;
+    }
+  }
+  const small = [];
+  for (const s of [-1, 1]) { const a = limb(spine, s * 0.75, 0.8, -0.2, 0.08, 0.8, skin); a.rotation.set(-0.8, 0, s * 0.6); const b = limb(a, 0, -0.9, 0, 0.07, 0.7, skin); claws(b, -0.8, bone); small.push([a, b]); }
+  // legs
+  const legs = [];
+  for (const s of [-1, 1]) { const h = limb(hips, s * 0.55, -0.1, 0, 0.3, 0.8, skin); const k = limb(h, 0, -0.95, 0, 0.25, 0.7, skin); k.rotation.x = 0.2; const foot = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 0.8), skin); foot.position.set(0, -0.9, -0.2); k.add(foot); legs.push([h, k]); }
+  // prisoners chained to its back and hips, dragged along
+  const dragged = [];
+  for (const [x, y, z, len] of [[-0.9, 1.5, 0.7, 1.4], [0.8, 1.2, 0.8, 1.7], [0, -0.2, 1.0, 0.9]]) {
+    const hang = new THREE.Group(); hang.position.set(x, y, z); spine.add(hang);
+    for (let k = 0; k < Math.ceil(len / 0.12); k++) { const l = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.015, 5, 10), iron); l.position.y = -k * 0.12; l.rotation.set(Math.PI / 2, k % 2 ? Math.PI / 2 : 0, 0); hang.add(l); }
+    const b = buildBody(Math.random, 'hanging'); b.position.y = -len - 0.4; hang.add(b); dragged.push(hang);
+  }
+  g.scale.setScalar(1.12);
+  return { g, glows: [eye], heart, jaw, anim(tm, moving, charging, attacking) {
+    const sp = charging ? 9 : moving ? 3.2 : 0.8, a = moving ? 0.35 : 0.04;
+    legs.forEach(([h, k], i) => { const ph = tm * sp + i * Math.PI; h.rotation.x = Math.sin(ph) * a; k.rotation.x = 0.2 + Math.max(0, -Math.cos(ph)) * a * 1.3; });
+    arms.forEach(([s, e], i) => { const ph = tm * sp + i * Math.PI; s.rotation.x = attacking ? -2.6 + Math.sin(tm * 10) * 0.2 : -Math.sin(ph) * a * 0.7 - 0.1; e.rotation.x = attacking ? -0.6 : -0.3 - Math.sin(tm * 1.3 + i) * 0.1; });
+    small.forEach(([s, e], i) => { s.rotation.x = -0.8 + Math.sin(tm * 3.3 + i * 2) * 0.35; e.rotation.x = -0.5 + Math.sin(tm * 4.1 + i) * 0.4; });
+    if (arms.flail) arms.flail.rotation.x = Math.sin(tm * (attacking ? 12 : 1.6)) * (attacking ? 0.9 : 0.25);
+    dragged.forEach((d, i) => { d.rotation.x = Math.sin(tm * 1.1 + i * 2) * 0.12 + (moving ? 0.2 : 0); d.rotation.z = Math.sin(tm * 0.9 + i) * 0.08; });
+    const beat = Math.pow(Math.max(0, Math.sin(tm * 5)), 8); heart.scale.setScalar(1 + beat * 0.3); heartMat.emissiveIntensity = 1.4 + beat * 2.2;
+    hips.position.y = 1.9 + Math.abs(Math.sin(tm * sp)) * (moving ? 0.08 : 0.01); spine.rotation.x = -0.25 - (charging ? 0.3 : 0) + Math.sin(tm * 0.9) * 0.03;
+    jaw.rotation.x = attacking ? 0.55 : 0.1 + Math.sin(tm * 2.3) * 0.08; neck.rotation.y = Math.sin(tm * 0.7) * 0.25;
+  } };
+}
+
 const BUILDERS = { skitter: buildSkitter, sentinel: buildSentinel, colossus: buildColossus, archivist: buildArchivist,
-  ghoul: buildGhoul, crawler: buildCrawler, butcher: t => buildButcher(t), wraith: buildWraith, hollowking: t => buildButcher(t, 1.75) };
+  ghoul: buildGhoul, crawler: buildCrawler, butcher: t => buildButcher(t), wraith: buildWraith, hollowking: t => buildButcher(t, 1.75), warden: buildWarden };
 
 export class Enemy {
   constructor(type, pos, scene, depth) {
@@ -230,7 +306,7 @@ export class Enemy {
     if (this.dead) return false;
     this.hp -= n; this.flash = 0.1; this.lastOpts = opts;
     if (this.state === 'idle') this.alert(game);
-    if (fromDir && this.type !== 'archivist') this.vel.addScaledVector(fromDir, this.type === 'colossus' ? 0.5 : 3);
+    if (fromDir && this.type !== 'archivist' && this.type !== 'warden') this.vel.addScaledVector(fromDir, this.type === 'colossus' ? 0.5 : 3);
     if (this.hp <= 0) { this.die(game); return true; }
     return false;
   }
@@ -346,6 +422,51 @@ export class Enemy {
         else move = chaseDir();
         break;
       }
+      case 'warden': {
+        // phase 1: stalk, slam and hurl hellfire. 2: + fire rings and summons the damned. 3: enraged, charges.
+        const ph = this.hp > this.maxHp * 0.66 ? 1 : this.hp > this.maxHp * 0.33 ? 2 : 3;
+        this.cool -= dt; this.attackT -= dt; this.spawnT -= dt; this.ringT = (this.ringT ?? 5) - dt; this.volleyT = (this.volleyT ?? 2.5) - dt;
+        speed = this.t.speed * (ph === 3 ? 1.5 : 1);
+        const reach = this.t.reach;
+        if (this.windup > 0) {
+          this.windup -= dt; move.set(0, 0, 0); this.attackT = 0.2;
+          if (this.windup <= 0) {
+            const at = this.pos.clone().add(new THREE.Vector3(0, 0.2, 0)).addScaledVector(toP, reach * 0.55);
+            game.fx.explosion(at, 0xff4010, reach + 2.5); game.fx.bloodSplat(new THREE.Vector3(at.x, 0.01, at.z), new THREE.Vector3(0, 1, 0), 2.5);
+            game.shake(1.6); game.audio.explode();
+            if (dist < reach + 2) game.hurtPlayer(this.t.dmg, this.pos, 14);
+            this.cool = ph === 3 ? 1.0 : 1.5;
+          }
+        } else if (this.charge > 0) {
+          this.charge -= dt; speed = this.t.speed * 3.6; move = this.chargeDir.clone();
+          if (dist < reach) { game.hurtPlayer(this.t.dmg, this.pos, 18); this.charge = 0; this.cool = 1.2; }
+        } else if (dist < reach + 1.2 && this.cool <= 0) { this.windup = ph === 3 ? 0.5 : 0.75; game.audio.growl(0.3); }
+        else if (ph === 3 && sees && dist > 7 && dist < 24 && this.cool <= 0 && Math.random() < dt * 0.8) { this.charge = 1.3; this.chargeDir = toP.clone(); game.audio.roar?.(0.7); }
+        else move = chaseDir();
+        // hellfire volley at the player
+        if (sees && this.volleyT <= 0 && this.windup <= 0) {
+          const n = ph === 1 ? 5 : ph === 2 ? 7 : 9, from = this.centre.add(new THREE.Vector3(0, 1.4, 0)).addScaledVector(toP, 1.8);
+          for (let i = 0; i < n; i++) {
+            const dir = player.eye.clone().sub(from).normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), (i - (n - 1) / 2) * 0.11);
+            game.projectiles.fire(from, dir, { owner: 'enemy', speed: 16, dmg: 16, color: i % 2 ? 0xff5a1a : 0xff2008, size: 0.4 });
+          }
+          game.audio.spit?.(); this.volleyT = ph === 1 ? 2.8 : ph === 2 ? 2.3 : 1.7; this.attackT = 0.35;
+        }
+        // phase 2+: a ring of fire rolls out along the floor in every direction: jump it or find a gap
+        if (ph >= 2 && this.ringT <= 0) {
+          const from = new THREE.Vector3(this.pos.x, 0.35, this.pos.z), n = 22, off = Math.random();
+          for (let i = 0; i < n; i++) { const a = (i + off) / n * Math.PI * 2; game.projectiles.fire(from, new THREE.Vector3(Math.cos(a), 0, Math.sin(a)), { owner: 'enemy', speed: 11, dmg: 18, color: 0xff3010, size: 0.45 }); }
+          game.audio.roar?.(0.5); this.ringT = ph === 2 ? 8 : 6;
+        }
+        // phase 2+: tears open the floor and the damned crawl out
+        if (ph >= 2 && this.spawnT <= 0) {
+          const near = game.enemies.filter(e => !e.dead && e !== this && e.pos.distanceTo(this.pos) < 30).length;
+          if (near < 10) { game.spawnMinions(this.pos, ph === 2 ? 3 : 2, 'ghoul'); game.spawnMinions(this.pos, 1, ph === 2 ? 'wraith' : 'butcher'); }
+          this.spawnT = ph === 2 ? 13 : 15;
+        }
+        if (ph !== this.phase) { if (this.phase) game.onBossPhase?.(this, ph); this.phase = ph; }
+        break;
+      }
       case 'sentinel': {
         this.cool -= dt; this.strafeT -= dt;
         if (this.strafeT <= 0) { this.strafe *= -1; this.strafeT = 1.2 + Math.random() * 1.5; }
@@ -426,6 +547,13 @@ export class Enemy {
 /** Choose a mix of enemies for a room based on sector depth. */
 export function rollEnemy(rand, depth, theme = 'vault') {
   const r = rand();
+  if (theme === 'pit') { // everything that crawled up from below, and more of the big ones
+    if (r < 0.1 + (depth - 7) * 0.03) return 'butcher';
+    if (r < 0.45) return 'ghoul';
+    if (r < 0.6) return 'crawler';
+    if (r < 0.85) return 'wraith';
+    return r < 0.93 ? 'colossus' : 'sentinel';
+  }
   if (theme === 'undercroft') {
     if (depth >= 2 && r < 0.05 + depth * 0.015) return 'butcher';
     if (r < 0.5) return 'ghoul';

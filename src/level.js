@@ -5,7 +5,10 @@ import { decorate } from './horror.js';
 
 export const CELL = 4;        // metres per grid cell
 export const WALL_H = 5.2;
+export const FINAL_DEPTH = 10;
 const W = 44, H = 44;
+/** 0 at sector 1, 1 at the final sector: drives how dark, red, foggy and gory each sector is. */
+export const dreadFor = depth => Math.min(1, Math.max(0, (depth - 1) / (FINAL_DEPTH - 1)));
 
 const PALETTES = [
   { name: 'cyan', light: 0x38f2ff, strip: 0x38f2ff },
@@ -30,12 +33,21 @@ function carve(rand, depth) {
   const grid = new Uint8Array(W * H).fill(1);
   const rooms = [];
   const target = 7 + Math.min(depth, 6);
+  // the final sector: a start room in one corner and the Warden's arena in the opposite one
+  if (depth === FINAL_DEPTH) {
+    const sx = rand() < 0.5 ? 2 : W - 9, sy = rand() < 0.5 ? 2 : H - 9;
+    rooms.push({ x: sx, y: sy, w: 6, h: 6, cx: sx + 3, cy: sy + 3 });
+    const aw = 15, ax = sx < W / 2 ? W - aw - 2 : 2, ay = sy < H / 2 ? H - aw - 2 : 2;
+    rooms.push({ x: ax, y: ay, w: aw, h: aw, cx: ax + (aw >> 1), cy: ay + (aw >> 1), arena: true });
+  }
   for (let tries = 0; tries < 400 && rooms.length < target; tries++) {
     const w = 4 + Math.floor(rand() * 6), h = 4 + Math.floor(rand() * 6);
     const x = 1 + Math.floor(rand() * (W - w - 2)), y = 1 + Math.floor(rand() * (H - h - 2));
     if (rooms.some(r => x < r.x + r.w + 2 && x + w + 2 > r.x && y < r.y + r.h + 2 && y + h + 2 > r.y)) continue;
     rooms.push({ x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1) });
   }
+  // the arena is joined up last, so the way to it runs through the rest of the sector
+  const ai = rooms.findIndex(r => r.arena); if (ai > 0) rooms.push(rooms.splice(ai, 1)[0]);
   for (const r of rooms) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) grid[y * W + x] = 0;
   // connect each room to its nearest already-connected room (a tree), plus a couple of loops
   const connected = [rooms[0]];
@@ -73,22 +85,24 @@ function bfs(grid, sx, sy) {
   return dist;
 }
 
-/** Sector 1 is the vault; after that the Undercroft (catacombs) alternates with the vault. */
-export function themeFor(depth) { return depth === 1 ? 'vault' : depth % 2 === 0 ? 'undercroft' : 'vault'; }
+/** Sectors 1-6 alternate between the vault and the Undercroft; 7-10 are the Pit, where the damned are punished. */
+export function themeFor(depth) { return depth >= 7 ? 'pit' : depth % 2 === 0 ? 'undercroft' : 'vault'; }
 
 export function buildLevel(scene, depth, quality, gore = true) {
   const seed = (Date.now() ^ (depth * 7919)) >>> 0;
   const rand = mulberry(seed);
   const { grid, rooms } = carve(rand, depth);
+  const arena = rooms.find(r => r.arena) || null;
   const tex = textures();
   const group = new THREE.Group();
   const palette = { ...PALETTES[(depth - 1) % PALETTES.length] };
   const accent = { ...PALETTES[(depth + 1) % PALETTES.length] };
-  const theme = themeFor(depth), horror = theme === 'undercroft';
+  const theme = themeFor(depth), pit = theme === 'pit', horror = theme !== 'vault', dread = dreadFor(depth);
   if (horror) { palette.light = 0xff7a2e; accent.light = 0xff2a1a; }
+  if (pit) { palette.light = 0xff4a1a; accent.light = 0xc01008; }
 
   // ---------- floor & ceiling ----------
-  const floorMat = horror ? new THREE.MeshStandardMaterial({ ...tex.flag, color: 0xa89a8c, metalness: 0.05, roughness: 1 }) : new THREE.MeshStandardMaterial({ ...tex.floor, color: 0xb8c0cc, metalness: 0.55, roughness: 1 });
+  const floorMat = horror ? new THREE.MeshStandardMaterial({ ...tex.flag, color: pit ? 0x7a5a50 : 0xa89a8c, metalness: 0.05, roughness: 1 }) : new THREE.MeshStandardMaterial({ ...tex.floor, color: 0xb8c0cc, metalness: 0.55, roughness: 1 });
   floorMat.map.repeat.set(W / 2, H / 2); floorMat.normalMap.repeat.set(W / 2, H / 2); floorMat.roughnessMap.repeat.set(W / 2, H / 2);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * CELL, H * CELL), floorMat);
   floor.rotation.x = -Math.PI / 2; floor.position.set(W * CELL / 2, 0, H * CELL / 2); floor.receiveShadow = true;
@@ -109,7 +123,7 @@ export function buildLevel(scene, depth, quality, gore = true) {
     if (!exposed) continue;
     (v === 2 ? rackCells : wallCells).push([x, y]);
   }
-  const wallMat = horror ? new THREE.MeshStandardMaterial({ ...tex.stone, color: 0xb0a090, metalness: 0, roughness: 1 }) : new THREE.MeshStandardMaterial({ ...tex.wall, color: 0xc4ccd8, metalness: 0.6, roughness: 1 });
+  const wallMat = horror ? new THREE.MeshStandardMaterial({ ...tex.stone, color: pit ? 0x8a5a4c : 0xb0a090, metalness: 0, roughness: 1 }) : new THREE.MeshStandardMaterial({ ...tex.wall, color: 0xc4ccd8, metalness: 0.6, roughness: 1 });
   const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL, WALL_H, CELL), wallMat, wallCells.length);
   const m = new THREE.Matrix4();
   wallCells.forEach(([x, y], i) => { m.makeTranslation(x * CELL + CELL / 2, WALL_H / 2, y * CELL + CELL / 2); walls.setMatrixAt(i, m); });
@@ -163,8 +177,9 @@ export function buildLevel(scene, depth, quality, gore = true) {
     const light = new THREE.PointLight(col, 95, CELL * 10, 1.5);
     light.position.set(r.cx * CELL + CELL / 2, WALL_H - 0.6, r.cy * CELL + CELL / 2);
     if (i < maxShadow) { light.castShadow = true; light.shadow.mapSize.set(512, 512); light.shadow.bias = -0.004; light.shadow.radius = 3; }
-    light.userData.base = horror ? 70 : 95; light.userData.flicker = horror ? 'torch' : rand() < 0.25;
-    if (horror) { light.intensity = 110; light.userData.base = 110; light.position.y = WALL_H - 1.4; }
+    light.userData.base = (horror ? 70 : 95) * (1 - dread * 0.2); light.userData.flicker = horror ? 'torch' : rand() < 0.25 + dread * 0.5;
+    if (horror) { light.intensity = light.userData.base = 110 * (1 - dread * 0.2); light.position.y = WALL_H - 1.4; }
+    light.userData.dying = rand() < dread * 0.45; // deeper down, more lights stutter and die for seconds at a time
     group.add(light); lights.push(light);
     // visible lamp fixture
     if (horror) {
@@ -180,7 +195,15 @@ export function buildLevel(scene, depth, quality, gore = true) {
       group.add(lamp);
     }
   });
-  const hemi = horror ? new THREE.HemisphereLight(0x8a6a58, 0x120806, 0.75) : new THREE.HemisphereLight(0x7d8fbd, 0x1a1a22, 1.1);
+  // the Warden's arena: four great fire pits light the hall
+  if (arena) for (const [fx, fy] of [[2, 2], [arena.w - 3, 2], [2, arena.h - 3], [arena.w - 3, arena.h - 3]]) {
+    const x = (arena.x + fx) * CELL + CELL / 2, z = (arena.y + fy) * CELL + CELL / 2;
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.7, 0.8, 16), new THREE.MeshStandardMaterial({ color: 0x2c2826, metalness: 0.9, roughness: 0.5, emissive: 0x401004, emissiveIntensity: 1 }));
+    bowl.position.set(x, 0.4, z); group.add(bowl);
+    for (let k = 0; k < 14; k++) { const f = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.flame, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); f.scale.set(0.6 + rand() * 0.4, 1.2 + rand() * 0.9, 1); f.position.set(x + (rand() - 0.5) * 1.3, 1.2 + rand() * 0.5, z + (rand() - 0.5) * 1.3); group.add(f); }
+    const fl = new THREE.PointLight(0xff5a1a, 140, CELL * 9, 1.6); fl.position.set(x, 2.4, z); fl.userData.base = 140; fl.userData.flicker = 'torch'; group.add(fl); lights.push(fl);
+  }
+  const hemi = pit ? new THREE.HemisphereLight(0x8a4a3a, 0x140404, 0.72 - dread * 0.2) : horror ? new THREE.HemisphereLight(0x8a6a58, 0x120806, 0.75 - dread * 0.2) : new THREE.HemisphereLight(0x7d8fbd, 0x1a1a22, 1.1 - dread * 0.45);
   group.add(hemi);
 
   // ---------- start, exit, distances ----------
@@ -188,24 +211,28 @@ export function buildLevel(scene, depth, quality, gore = true) {
   const dist = bfs(grid, start.cx, start.cy);
   let exitRoom = rooms[1];
   for (const r of rooms) if (dist[r.cy * W + r.cx] > dist[exitRoom.cy * W + exitRoom.cx]) exitRoom = r;
+  if (arena) exitRoom = arena;
   const exit = buildPortal(exitRoom.cx * CELL + CELL / 2, exitRoom.cy * CELL + CELL / 2, tex.glow);
   group.add(exit.group);
+  if (arena) exit.group.visible = false; // no way out of the last sector except through the Warden
 
   // floating dust motes for atmosphere
   const dustCount = quality === 'low' ? 400 : 1400;
   const dustGeo = new THREE.BufferGeometry(), dustPos = new Float32Array(dustCount * 3);
   for (let i = 0; i < dustCount; i++) { dustPos[i * 3] = rand() * W * CELL; dustPos[i * 3 + 1] = rand() * WALL_H; dustPos[i * 3 + 2] = rand() * H * CELL; }
   dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
-  const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: 0.06, map: tex.glow, color: horror ? 0xffb080 : 0x9fdcff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const dustPos0 = Float32Array.from({ length: dustCount }, (_, i) => dustPos[i * 3 + 1]);
+  const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: pit ? 0.09 : 0.06, map: tex.glow, color: pit ? 0xff5a20 : horror ? 0xffb080 : 0x9fdcff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
   group.add(dust);
 
   scene.add(group);
-  scene.fog = horror ? new THREE.FogExp2(0x0c0604, 0.018) : new THREE.FogExp2(0x060a12, 0.016);
-  const deco = decorate({ grid, W, H, rooms }, theme, rand, CELL, WALL_H, gore);
+  const fogCol = new THREE.Color(horror ? 0x0c0604 : 0x060a12).lerp(new THREE.Color(0x1a0302), pit ? 0.7 : dread * 0.5);
+  scene.fog = new THREE.FogExp2(fogCol, (horror ? 0.018 : 0.016) + dread * 0.014);
+  const deco = decorate({ grid, W, H, rooms }, theme, rand, CELL, WALL_H, gore, dread);
   group.add(deco.group);
 
   const api = {
-    group, grid, rooms, W, H, start, exitRoom, exit, lights, leds, dust, palette, theme,
+    group, grid, rooms, W, H, start, exitRoom, exit, lights, leds, dust, palette, theme, arena, dread,
     isSolid(wx, wz) { return solid(Math.floor(wx / CELL), Math.floor(wz / CELL)); },
     cellOf(wx, wz) { return [Math.floor(wx / CELL), Math.floor(wz / CELL)]; },
     centreOf(cx, cy) { return new THREE.Vector3(cx * CELL + CELL / 2, 0, cy * CELL + CELL / 2); },
@@ -251,12 +278,18 @@ export function buildLevel(scene, depth, quality, gore = true) {
     rand,
     update(t) {
       for (const l of lights) {
+        if (l.userData.dying && (Math.sin(t * 0.37 + l.position.x) > 0.82 || (Math.sin(t * 0.37 + l.position.x) > 0.7 && Math.random() < 0.5))) { l.intensity = l.userData.base * 0.04; continue; }
         if (l.userData.flicker === 'torch') l.intensity = l.userData.base * (0.78 + Math.sin(t * 9 + l.position.x) * 0.1 + Math.sin(t * 23 + l.position.z) * 0.08 + Math.random() * 0.06);
         else if (l.userData.flicker) l.intensity = l.userData.base * (Math.sin(t * 23) > 0.93 || Math.random() < 0.02 ? 0.15 : 1);
       }
       deco.update(t);
       for (const led of leds) led.visible = Math.sin(t * led.userData.speed + led.userData.phase) > -0.3;
       dust.rotation.y = Math.sin(t * 0.05) * 0.002;
+      if (pit) { // embers drifting up out of the dark
+        const a = dustGeo.attributes.position;
+        for (let i = 0; i < dustCount; i++) a.array[i * 3 + 1] = (dustPos0[i] + t * 0.35 * (0.5 + (i % 7) / 7)) % WALL_H;
+        a.needsUpdate = true;
+      }
       exit.update(t);
     },
     dispose() {

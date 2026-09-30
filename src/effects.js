@@ -115,7 +115,7 @@ export class Effects {
   /** Blood splat decal on a surface (floor or wall). */
   bloodSplat(pos, normal, size = 1) {
     if (!this.gore) return;
-    const mat = new THREE.MeshStandardMaterial({ map: this.bloodTex[Math.floor(Math.random() * 3)], color: Math.random() < 0.5 ? 0x3a0202 : 0x2a0101, transparent: true, depthWrite: false, roughness: 0.15, polygonOffset: true, polygonOffsetFactor: -4 });
+    const mat = new THREE.MeshStandardMaterial({ map: this.bloodTex[Math.floor(Math.random() * 3)], color: Math.random() < 0.5 ? 0x3a0202 : 0x2a0101, transparent: true, depthWrite: false, roughness: 0.5, envMapIntensity: 0.15, polygonOffset: true, polygonOffsetFactor: -4 });
     const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
     m.position.copy(pos).add(normal.clone().multiplyScalar(0.015));
     m.lookAt(pos.clone().add(normal)); m.rotateZ(Math.random() * 6);
