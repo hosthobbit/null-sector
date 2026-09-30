@@ -163,7 +163,7 @@ You can also upload the whole folder to any web host, or turn on **GitHub Pages*
 - **Death:** when your Integrity hits 0 the run ends. Start again and the sectors are all new.
 - **Victory:** kill the Warden and you've escaped. Your final score, time and accuracy are shown, and your best score is saved.
 
-The **minimap** (top left) shows the layout around you (you're the white arrow), enemies and pickups.
+The **minimap** (top left) turns with you (you're the white arrow) and shows **every enemy and every power-up** in the sector: anything out of view is pinned to the edge in the direction it lies. Press **M** for a full-screen map of the whole sector. The legend under the minimap explains the markers: red dots are enemies, a big yellow dot is a boss, diamonds are pickups in their colours (red health, cyan shield, orange ammo, green BFG cell, white-rimmed weapons), and the green circle is the exit portal once it's open.
 
 ---
 
@@ -179,6 +179,7 @@ The **minimap** (top left) shows the layout around you (you're the white arrow),
 | **Q** | Phase dash: short burst of speed with brief invulnerability |
 | **R** | Reload |
 | **1 – 6** or **mouse wheel** | Change weapon |
+| **M** | Full-screen sector map (press again to close) |
 | **F** | Show or hide the FPS counter |
 | **Esc** | Pause menu: Resume, Settings, Abandon run |
 
@@ -193,6 +194,7 @@ Press **Esc**, then **SETTINGS** (also on the title screen). Changes apply strai
 | **Mouse sensitivity** | How fast the view turns (0.05–2, default 0.5). Lower it if aiming feels twitchy. |
 | **Invert Y** | Flip vertical look |
 | **Field of view** | 60–110°. A wider FOV shows more but makes enemies look smaller. |
+| **Brightness** | 60–200% (default 130%). Raise it if the deeper sectors are too dark on your screen. |
 | **Volume** | Master volume for music and effects |
 | **Graphics quality** | **High**: shadows, bloom and full resolution. **Medium / Low** for older laptops. |
 | **Show FPS** | Frame-rate counter |
@@ -269,6 +271,7 @@ Monsters bleed, leave corpses where they fall, and burst into gibs from explosio
 | **Black screen or "Failed to load module"** when opening `index.html` directly | Browsers block modules from `file://` pages. Start the server (`node server.js`) and use **http://localhost:8420**. |
 | **`node` is not recognised** | Node.js isn't installed or the terminal was open before you installed it. Install from nodejs.org, then open a **new** terminal. |
 | **"EADDRINUSE" / port already in use** | The game is already running (just open the address) or something else uses the port. Try `node server.js 9000`. |
+| **Too dark to see** | Esc, then Settings, then turn **Brightness** up. Press **M** to check the full map. |
 | **Low frame rate** | Esc, then Settings, then Graphics quality **Medium** or **Low**. Close other heavy tabs. On laptops, plug in the charger and make sure the browser uses the dedicated GPU. |
 | **Mouse turns too fast or too slow** | Esc, then Settings, then **Mouse sensitivity**. |
 | **Mouse won't lock or the view won't turn** | Click inside the game window. Some browsers need one click after Esc before they'll lock the mouse again. |

@@ -17,16 +17,16 @@ import { glowSprite } from './textures.js';
 import * as audio from './audio.js';
 
 const $ = id => document.getElementById(id);
-const DEFAULTS = { sens: 0.5, invert: false, fov: 78, vol: 0.7, quality: 'high', fps: false, gore: true };
+const DEFAULTS = { sens: 0.5, invert: false, fov: 78, vol: 0.7, bright: 1.3, quality: 'high', fps: false, gore: true };
 function loadSettings() { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('ns-settings') || '{}') }; } catch { return { ...DEFAULTS }; } }
 function saveSettings(s) { try { localStorage.setItem('ns-settings', JSON.stringify(s)); } catch {} }
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 
 const FinalShader = {
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, damage: { value: 0 }, aberr: { value: 0.004 }, grain: { value: 0.016 }, heal: { value: 0 }, dread: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, damage: { value: 0 }, aberr: { value: 0.004 }, grain: { value: 0.016 }, heal: { value: 0 }, dread: { value: 0 }, lift: { value: 1 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float time, damage, aberr, grain, heal, dread; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float time, damage, aberr, grain, heal, dread, lift; varying vec2 vUv;
     float rnd(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
       vec2 uv = vUv; vec2 c = uv - 0.5; float d = length(c);
@@ -41,6 +41,7 @@ const FinalShader = {
       col = mix(col, col * vec3(1.6, 0.35, 0.4), damage * smoothstep(0.15, 0.85, d));
       col = mix(col, col * vec3(0.6, 1.4, 1.5), heal * smoothstep(0.3, 0.9, d));
       col *= 0.985 + 0.015 * sin(uv.y * 1100.0 + time * 8.0);
+      col = pow(max(col, 0.0), vec3(1.0 / (1.0 + (lift - 1.0) * 0.28))); // brightness setting also lifts the shadows
       gl_FragColor = vec4(col, 1.0);
     }`,
 };
@@ -99,6 +100,7 @@ class Game {
     // idle title-screen flythrough
     this.level = buildLevel(this.scene, 1, this.quality);
     this.player.reset(this.level.centreOf(this.level.start.cx, this.level.start.cy));
+    this.applySettings();
     this.renderer.setAnimationLoop(() => this.frame());
     window.NS = this;
   }
@@ -115,6 +117,7 @@ class Game {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), q === 'low' ? 0.55 : 0.75, 0.5, 0.82);
     this.composer.addPass(this.bloom);
     this.final = new ShaderPass(FinalShader);
+    this.final.uniforms.lift.value = this.settings.bright; this.final.uniforms.dread.value = this.level ? this.level.dread : 0;
     this.composer.addPass(this.final);
     this.composer.addPass(new OutputPass());
   }
@@ -147,6 +150,7 @@ class Game {
       if (e.code === 'KeyR') this.reload();
       if (e.code === 'KeyQ' && this.player.tryDash(this.audio)) this.fx.burst(this.player.eye.clone().addScaledVector(this.player.forward, -1), 0x38f2ff, 20, 4, 0.2);
       if (e.code.startsWith('Digit')) { const i = Number(e.code.slice(5)) - 1; if (i >= 0 && i < WEAPONS.length) this.switchWeapon(i); }
+      if (e.code === 'KeyM') this.toggleBigMap();
       if (e.code === 'KeyF') { this.settings.fps = !this.settings.fps; saveSettings(this.settings); this.applySettings(); }
       if (e.code === 'Space') e.preventDefault();
     });
@@ -166,6 +170,7 @@ class Game {
     bindRange('sens', 'sens', v => v.toFixed(2));
     bindRange('fov', 'fov', v => `${v}°`);
     bindRange('vol', 'vol', v => `${Math.round(v * 100)}%`);
+    bindRange('bright', 'bright', v => `${Math.round(v * 100)}%`);
     $('invert').onchange = e => { S.invert = e.target.checked; saveSettings(S); this.applySettings(); };
     $('showfps').onchange = e => { S.fps = e.target.checked; saveSettings(S); this.applySettings(); };
     $('gore').onchange = e => { S.gore = e.target.checked; saveSettings(S); this.applySettings(); };
@@ -183,6 +188,7 @@ class Game {
     const S = this.settings;
     $('sens').value = S.sens; $('sensv').textContent = S.sens.toFixed(2);
     $('fov').value = S.fov; $('fovv').textContent = `${S.fov}°`;
+    $('bright').value = S.bright; $('brightv').textContent = `${Math.round(S.bright * 100)}%`;
     $('vol').value = S.vol; $('volv').textContent = `${Math.round(S.vol * 100)}%`;
     $('invert').checked = S.invert; $('showfps').checked = S.fps; $('quality').value = S.quality; $('gore').checked = S.gore;
   }
@@ -190,6 +196,8 @@ class Game {
     const S = this.settings;
     this.player.sens = S.sens; this.player.invert = S.invert;
     audio.setVolume(S.vol);
+    this.renderer.toneMappingExposure = 1.18 * S.bright;
+    this.final.uniforms.lift.value = S.bright;
     $('fps').classList.toggle('hidden', !S.fps);
     this.fx.gore = S.gore;
   }
@@ -669,37 +677,97 @@ class Game {
     $('dmg').style.opacity = this.damageFx;
     $('reloadtip').classList.toggle('hidden', !(this.reloading > 0 || (a.mag === 0 && a.reserve === 0)));
     $('reloadtip').textContent = this.reloading > 0 ? 'RELOADING' : 'NO AMMUNITION';
-    this.mapT -= dt; if (this.mapT <= 0) { this.drawMap(); this.mapT = 0.1; }
+    this.mapT -= dt; if (this.mapT <= 0) { this.drawMap(); this.mapT = 0.05; }
   }
 
-  // ---------------------------------------------------------------- minimap
-  buildMapBase() { this.mapCanvas = $('minimap'); this.mapCtx = this.mapCanvas.getContext('2d'); }
+  // ---------------------------------------------------------------- maps
+  buildMapBase() {
+    this.mapCanvas = $('minimap'); this.mapCtx = this.mapCanvas.getContext('2d');
+    this.bigCanvas = $('bigmap'); this.bigCtx = this.bigCanvas.getContext('2d');
+  }
+
+  toggleBigMap(open = !this.bigMapOpen) {
+    this.bigMapOpen = open;
+    $('bigmap').classList.toggle('hidden', !open); $('bigmaptip').classList.toggle('hidden', !open);
+    if (open) this.drawMap();
+  }
 
   drawMap() {
-    const L = this.level, ctx = this.mapCtx, P = this.player, S = this.mapCanvas.width;
+    const L = this.level, P = this.player;
     const [pcx, pcy] = L.cellOf(P.pos.x, P.pos.z);
     for (let y = pcy - 4; y <= pcy + 4; y++) for (let x = pcx - 4; x <= pcx + 4; x++) if (x >= 0 && y >= 0 && x < L.W && y < L.H && L.los(P.pos.x, P.pos.z, x * CELL + 2, y * CELL + 2)) this.revealed[y * L.W + x] = 1;
-    const view = 22, scale = S / view, ox = P.pos.x / CELL - view / 2, oy = P.pos.z / CELL - view / 2;
+    this.renderMap(this.mapCtx, this.mapCanvas.width, 26, true);
+    if (this.bigMapOpen) this.renderMap(this.bigCtx, this.bigCanvas.width, Math.max(L.W, L.H) + 2, false);
+  }
+
+  /**
+   * Draw the sector. follow: minimap centred on the player and turning with them, with anything out of view
+   * pinned to the edge; otherwise the whole sector, north up. Every enemy and pickup is always shown.
+   */
+  renderMap(ctx, S, view, follow) {
+    const L = this.level, P = this.player, scale = S / view, u = follow ? 1 : 1.25;
+    const ox = follow ? P.pos.x / CELL - view / 2 : (L.W - view) / 2, oy = follow ? P.pos.z / CELL - view / 2 : (L.H - view) / 2;
+    const cos = Math.cos(P.yaw), sin = Math.sin(P.yaw), C = S / 2;
+    // world position -> screen, turning with the player on the minimap
+    const toScreen = (wx, wz) => {
+      const x = (wx / CELL - ox) * scale, y = (wz / CELL - oy) * scale;
+      if (!follow) return [x, y];
+      const dx = x - C, dy = y - C;
+      return [C + dx * cos - dy * sin, C + dx * sin + dy * cos];
+    };
     ctx.clearRect(0, 0, S, S);
+    // ---- layout: every floor cell (explored ones brighter), walls outlined
     ctx.save();
-    ctx.translate(S / 2, S / 2); ctx.rotate(P.yaw); ctx.translate(-S / 2, -S / 2);
-    for (let y = Math.floor(oy) - 4; y < oy + view + 4; y++) for (let x = Math.floor(ox) - 4; x < ox + view + 4; x++) {
-      if (x < 0 || y < 0 || x >= L.W || y >= L.H || !this.revealed[y * L.W + x]) continue;
-      const v = L.grid[y * L.W + x];
-      ctx.fillStyle = v === 0 ? 'rgba(56,242,255,0.10)' : v === 2 ? 'rgba(255,179,71,0.5)' : 'rgba(150,180,220,0.55)';
-      ctx.fillRect((x - ox) * scale, (y - oy) * scale, scale + 0.5, scale + 0.5);
+    if (follow) { ctx.translate(C, C); ctx.rotate(P.yaw); ctx.translate(-C, -C); }
+    const x0 = follow ? Math.floor(ox) - 5 : 0, x1 = follow ? ox + view + 5 : L.W, y0 = follow ? Math.floor(oy) - 5 : 0, y1 = follow ? oy + view + 5 : L.H;
+    const solid = (x, y) => x < 0 || y < 0 || x >= L.W || y >= L.H || L.grid[y * L.W + x] !== 0;
+    ctx.lineWidth = Math.max(2, scale * 0.12); ctx.strokeStyle = 'rgba(140,225,255,0.95)';
+    ctx.beginPath();
+    for (let y = Math.max(0, y0); y < Math.min(L.H, y1); y++) for (let x = Math.max(0, x0); x < Math.min(L.W, x1); x++) {
+      const v = L.grid[y * L.W + x], sx = (x - ox) * scale, sy = (y - oy) * scale;
+      if (v === 2) { ctx.fillStyle = 'rgba(255,190,90,0.7)'; ctx.fillRect(sx + scale * 0.15, sy + scale * 0.15, scale * 0.7, scale * 0.7); continue; }
+      if (v !== 0) continue;
+      ctx.fillStyle = this.revealed[y * L.W + x] ? 'rgba(70,130,185,0.62)' : 'rgba(70,130,185,0.26)';
+      ctx.fillRect(sx, sy, scale + 0.6, scale + 0.6);
+      if (solid(x, y - 1)) { ctx.moveTo(sx, sy); ctx.lineTo(sx + scale, sy); }
+      if (solid(x, y + 1)) { ctx.moveTo(sx, sy + scale); ctx.lineTo(sx + scale, sy + scale); }
+      if (solid(x - 1, y)) { ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + scale); }
+      if (solid(x + 1, y)) { ctx.moveTo(sx + scale, sy); ctx.lineTo(sx + scale, sy + scale); }
     }
-    const dot = (wx, wz, col, r) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc((wx / CELL - ox) * scale, (wz / CELL - oy) * scale, r, 0, 7); ctx.fill(); };
-    const alive = this.enemies.filter(e => !e.dead);
-    for (const e of alive) {
-      const [ex, ey] = L.cellOf(e.pos.x, e.pos.z);
-      if (e.state !== 'idle' && this.revealed[ey * L.W + ex] || alive.length <= 3) dot(e.pos.x, e.pos.z, alive.length <= 3 ? `rgba(255,46,136,${0.5 + Math.sin(this.time * 8) * 0.5})` : '#ff2e88', e.type === 'archivist' ? 9 : 5);
-    }
-    const ex = L.exit.group.position, [xcx, xcy] = L.cellOf(ex.x, ex.z);
-    if (this.revealed[xcy * L.W + xcx] || this.portalOpen) dot(ex.x, ex.z, this.portalOpen ? '#5dff8f' : '#38f2ff', 8);
-    for (const p of this.pickups.list) { const [x, y] = L.cellOf(p.g.position.x, p.g.position.z); if (this.revealed[y * L.W + x]) dot(p.g.position.x, p.g.position.z, '#' + p.color.toString(16).padStart(6, '0'), 3); }
+    ctx.stroke();
     ctx.restore();
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(S / 2, S / 2 - 11); ctx.lineTo(S / 2 - 7, S / 2 + 8); ctx.lineTo(S / 2 + 7, S / 2 + 8); ctx.fill();
+    // ---- markers (pinned to the edge of the minimap when out of view)
+    const edge = 12;
+    const place = (wx, wz) => {
+      let [x, y] = toScreen(wx, wz), off = false;
+      if (follow && (x < edge || y < edge || x > S - edge || y > S - edge)) {
+        const dx = x - C, dy = y - C, k = (C - edge) / Math.max(Math.abs(dx), Math.abs(dy)); x = C + dx * k; y = C + dy * k; off = true;
+      }
+      return [x, y, off];
+    };
+    const dot = (x, y, r, fill, line = '#fff', lw = 2.5) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = line; ctx.stroke(); };
+    const diamond = (x, y, r, fill, line = '#fff', lw = 2.5) => { ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = line; ctx.stroke(); };
+    const hex = c => '#' + c.toString(16).padStart(6, '0');
+    // exit portal
+    if (L.exit.group.visible) { const ex = L.exit.group.position, [x, y, off] = place(ex.x, ex.z); dot(x, y, (off ? 7 : 11) * u, this.portalOpen ? '#5dff8f' : 'rgba(56,242,255,0.5)', this.portalOpen ? '#fff' : '#38f2ff', 3); }
+    // pickups: diamonds; weapons bigger with a thick white rim
+    for (const p of this.pickups.list) {
+      const [x, y, off] = place(p.g.position.x, p.g.position.z), weapon = p.weapon !== undefined;
+      diamond(x, y, (off ? 6 : weapon ? 11 : 8) * u, hex(p.color), '#fff', weapon ? 4 : 2.2);
+    }
+    // enemies: red dots with a dark rim; bosses big and yellow with a pulsing ring
+    const pulse = 0.5 + Math.sin(this.time * 8) * 0.5;
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const [x, y, off] = place(e.pos.x, e.pos.z);
+      if (e.t.boss) { dot(x, y, (off ? 9 : 15) * u, '#ffd400', '#ff2a3a', 4); ctx.beginPath(); ctx.arc(x, y, (off ? 13 : 21 + pulse * 6) * u, 0, Math.PI * 2); ctx.strokeStyle = `rgba(255,60,40,${0.4 + pulse * 0.5})`; ctx.lineWidth = 3; ctx.stroke(); }
+      else dot(x, y, (off ? 5 : 7.5) * u, e.state === 'idle' ? '#c01828' : '#ff2a3a', '#1a0000', 2.2);
+    }
+    // player
+    const [px, py] = follow ? [C, C] : toScreen(P.pos.x, P.pos.z);
+    ctx.save(); ctx.translate(px, py); if (!follow) ctx.rotate(-P.yaw);
+    const a = 14 * u; ctx.beginPath(); ctx.moveTo(0, -a); ctx.lineTo(-a * 0.65, a * 0.75); ctx.lineTo(0, a * 0.4); ctx.lineTo(a * 0.65, a * 0.75); ctx.closePath();
+    ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.stroke(); ctx.restore();
   }
 }
 
@@ -728,6 +796,7 @@ requestAnimationFrame(() => {
         if (found) { const p = found.getWorldPosition(new THREE.Vector3()), f = new THREE.Vector3(0, 0, 1).applyQuaternion(found.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize();
           g.player.pos.set(p.x + f.x * 3.2, 0, p.z + f.z * 3.2); g.player.yaw = Math.atan2(f.x, f.z); g.player.pitch = 0.05; g.enemies.forEach(x => { x.state = 'idle'; }); }
       }
+      if (q.has('map')) g.toggleBigMap(true);
       window.__autotest = { type: e.type, theme: L.theme, enemies: g.enemies.map(x => x.type).join(',') };
       console.log('AUTOTEST ' + JSON.stringify(window.__autotest));
       if (q.has('kill')) setTimeout(() => {

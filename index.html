@@ -54,8 +54,15 @@
   #score { position:absolute; top:22px; right:30px; text-align:right; }
   #score .big { font-size:30px; color:#fff; }
   #combo { font:800 13px 'Orbitron'; color:var(--mag); letter-spacing:.2em; min-height:16px; text-shadow:0 0 10px var(--mag); }
-  #minimap { position:absolute; top:22px; left:26px; width:190px; height:190px; border:1px solid rgba(56,242,255,.3); background:rgba(4,8,16,.55); clip-path:polygon(0 0,100% 0,100% 100%,14px 100%,0 calc(100% - 14px)); }
-  #feed { position:absolute; top:230px; left:26px; font:700 14px 'Rajdhani'; letter-spacing:.05em; }
+  #minimap { position:absolute; top:22px; left:26px; width:250px; height:250px; border:1px solid rgba(56,242,255,.55); background:rgba(2,5,12,.82); box-shadow:0 0 18px rgba(0,0,0,.6); clip-path:polygon(0 0,100% 0,100% 100%,14px 100%,0 calc(100% - 14px)); }
+  #maplegend { position:absolute; top:278px; left:26px; width:250px; display:flex; flex-wrap:wrap; gap:3px 10px; font:700 12px 'Rajdhani'; letter-spacing:.06em; color:#dfe8ff; text-shadow:0 1px 3px #000; }
+  #maplegend span::before { content:''; display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:-1px; background:var(--c); border:1.5px solid #fff; }
+  #maplegend span.sq::before { border-radius:1px; transform:rotate(45deg); }
+  #maplegend span.key { color:#9fdcff; }
+  #maplegend span.key::before { display:none; }
+  #bigmap { position:absolute; inset:0; margin:auto; width:min(86vh, 92vw); height:min(86vh, 92vw); background:rgba(2,5,12,.93); border:1px solid rgba(56,242,255,.6); box-shadow:0 0 60px rgba(0,0,0,.8); }
+  #bigmaptip { position:absolute; left:50%; bottom:3vh; transform:translateX(-50%); font:700 13px 'Orbitron'; letter-spacing:.2em; color:#9fdcff; text-shadow:0 1px 4px #000; }
+  #feed { position:absolute; top:330px; left:26px; font:700 14px 'Rajdhani'; letter-spacing:.05em; }
   #feed div { color:#cfe; animation:fade 3.2s forwards; text-shadow:0 0 8px rgba(56,242,255,.6); }
   @keyframes fade { 0%,70% { opacity:1 } 100% { opacity:0 } }
   #banner { position:absolute; top:34%; left:0; right:0; text-align:center; opacity:0; transition:opacity .6s; }
@@ -102,7 +109,10 @@
 </head>
 <body>
 <div id="hud" class="hidden">
-  <canvas id="minimap" width="380" height="380"></canvas>
+  <canvas id="minimap" width="500" height="500"></canvas>
+  <div id="maplegend"><span style="--c:#ff2a3a">Enemy</span><span style="--c:#ffd400">Boss</span><span style="--c:#ff3b5c" class="sq">Health</span><span style="--c:#38f2ff" class="sq">Shield</span><span style="--c:#ffb347" class="sq">Ammo</span><span style="--c:#5dff5d" class="sq">BFG cell</span><span style="--c:#fff" class="sq">Weapon</span><span style="--c:#5dff8f">Exit</span><span class="key">M = full map</span></div>
+  <canvas id="bigmap" class="hidden" width="1100" height="1100"></canvas>
+  <div id="bigmaptip" class="hidden">SECTOR MAP  ·  PRESS M TO CLOSE</div>
   <div id="feed"></div>
   <div id="topbar"><div id="sector">SECTOR 01</div><div id="objective">Purge the Glitchborn</div></div>
   <div id="score"><div class="lbl">SCORE</div><div class="big" id="scorenum">0</div><div id="combo"></div></div>
@@ -159,6 +169,7 @@
     <label for="sens">Mouse sensitivity</label><input type="range" id="sens" min="0.05" max="2" step="0.05"><output id="sensv"></output>
     <label for="invert">Invert mouse (up/down)</label><input type="checkbox" id="invert"><span></span>
     <label for="fov">Field of view</label><input type="range" id="fov" min="60" max="110" step="1"><output id="fovv"></output>
+    <label for="bright">Brightness</label><input type="range" id="bright" min="0.6" max="2" step="0.05"><output id="brightv"></output>
     <label for="vol">Master volume</label><input type="range" id="vol" min="0" max="1" step="0.05"><output id="volv"></output>
     <label for="quality">Graphics quality</label><select id="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select><span></span>
     <label for="showfps">Show FPS counter</label><input type="checkbox" id="showfps"><span></span>

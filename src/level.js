@@ -177,8 +177,8 @@ export function buildLevel(scene, depth, quality, gore = true) {
     const light = new THREE.PointLight(col, 95, CELL * 10, 1.5);
     light.position.set(r.cx * CELL + CELL / 2, WALL_H - 0.6, r.cy * CELL + CELL / 2);
     if (i < maxShadow) { light.castShadow = true; light.shadow.mapSize.set(512, 512); light.shadow.bias = -0.004; light.shadow.radius = 3; }
-    light.userData.base = (horror ? 70 : 95) * (1 - dread * 0.2); light.userData.flicker = horror ? 'torch' : rand() < 0.25 + dread * 0.5;
-    if (horror) { light.intensity = light.userData.base = 110 * (1 - dread * 0.2); light.position.y = WALL_H - 1.4; }
+    light.userData.base = (horror ? 70 : 95) * (1 - dread * 0.1); light.userData.flicker = horror ? 'torch' : rand() < 0.25 + dread * 0.5;
+    if (horror) { light.intensity = light.userData.base = 110 * (1 - dread * 0.1); light.position.y = WALL_H - 1.4; }
     light.userData.dying = rand() < dread * 0.45; // deeper down, more lights stutter and die for seconds at a time
     group.add(light); lights.push(light);
     // visible lamp fixture
@@ -203,7 +203,7 @@ export function buildLevel(scene, depth, quality, gore = true) {
     for (let k = 0; k < 14; k++) { const f = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.flame, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); f.scale.set(0.6 + rand() * 0.4, 1.2 + rand() * 0.9, 1); f.position.set(x + (rand() - 0.5) * 1.3, 1.2 + rand() * 0.5, z + (rand() - 0.5) * 1.3); group.add(f); }
     const fl = new THREE.PointLight(0xff5a1a, 140, CELL * 9, 1.6); fl.position.set(x, 2.4, z); fl.userData.base = 140; fl.userData.flicker = 'torch'; group.add(fl); lights.push(fl);
   }
-  const hemi = pit ? new THREE.HemisphereLight(0x8a4a3a, 0x140404, 0.72 - dread * 0.2) : horror ? new THREE.HemisphereLight(0x8a6a58, 0x120806, 0.75 - dread * 0.2) : new THREE.HemisphereLight(0x7d8fbd, 0x1a1a22, 1.1 - dread * 0.45);
+  const hemi = pit ? new THREE.HemisphereLight(0x8a4a3a, 0x140404, 0.8 - dread * 0.1) : horror ? new THREE.HemisphereLight(0x8a6a58, 0x120806, 0.85 - dread * 0.1) : new THREE.HemisphereLight(0x7d8fbd, 0x1a1a22, 1.1 - dread * 0.25);
   group.add(hemi);
 
   // ---------- start, exit, distances ----------
